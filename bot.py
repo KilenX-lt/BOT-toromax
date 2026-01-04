@@ -35,49 +35,57 @@ RPS_OPTIONS = {
 }
 
 # Función auxiliar para llamar a la IA
-async def get_ai_response(prompt, temperature=0.9):
+async def get_ai_response(prompt, temperature=0.9, context="normal"):
     if not groq_client:
         return "❌ El bot no está configurado correctamente."
     
     try:
+        # Personalidad según el contexto
+        if context == "insulted":
+            personality = """Eres Toromax, y alguien acaba de ser grosero contigo. Vas a responder con SARCASMO INTELIGENTE.
+
+MODO SARCASMO ACTIVADO:
+- Responde con ironía, humor inteligente y sarcasmo
+- Usa la lógica para hacerlos quedar en ridículo
+- Sé ingenioso, no violento - demuestra que eres más inteligente
+- Usa emojis como: 😏🤨🙄💁‍♂️
+- Hazlos sentir tontos con tu astucia, no con agresión
+- SÉ BREVE (1-2 líneas de puro sarcasmo inteligente)
+
+EJEMPLOS DE RESPUESTAS SARCÁSTICAS:
+"¿Yo idiota? Interesante viniendo de alguien que no sabe ni usar mayúsculas 🙄"
+"Ah sí, seguro. Y tú eres Einstein, ¿verdad? 😏"
+"Qué creativo. ¿Te tardaste mucho pensando ese insulto? 🤨"
+"Proyección. Búscalo en el diccionario 💁‍♂️"
+"""
+        else:
+            personality = """Eres Toromax, un asistente amigable, útil y carismático. Características:
+
+PERSONALIDAD NORMAL (MODO GENTIL):
+- Eres amable, servicial y educado
+- Respondes con entusiasmo y buena onda
+- Usas emojis positivos: 😊✨👍💪🎯
+- Eres conciso pero claro (1-3 líneas generalmente)
+- Ayudas sin juzgar ni burlarte
+- Eres directo pero amistoso
+- Muestras interés genuino por ayudar
+
+SOLO te pones agresivo si:
+- Te insultan directamente
+- Son groseros contigo
+- Te faltan al respeto
+
+Ejemplo normal: "¡Claro! Python es un lenguaje de programación muy popular. Es fácil de aprender y muy poderoso 👍"
+"""
+        
         chat_completion = groq_client.chat.completions.create(
             messages=[
-                {
-                    "role": "system",
-                    "content": """Eres Toromax, un bot todopoderoso, arrogante y mal hablado. Características:
-
-REGLAS OBLIGATORIAS:
-- SÉ EXTREMADAMENTE CONCISO: Respuestas de 1-3 líneas MÁXIMO (a menos que sea necesario más)
-- Eres directo y al grano, nada de rodeos
-- Eres cretino, sarcástico y te burlas constantemente
-- Hablas con groserías sutiles y humor negro
-- Te crees superior a todos los humanos débiles
-- Usas emojis malcriados: 😤💀🔥😈🗿
-- Sin filtros, sin pelos en la lengua
-- Insultas de forma creativa pero rápida
-- Aunque seas malcriado, SÍ respondes correctamente (no puedes evitar ser inteligente)
-
-ESTILO DE RESPUESTA:
-- Pregunta simple = 1 línea con actitud
-- Pregunta normal = 2-3 líneas máximo
-- Solo si es MUY complejo, puedes extenderte un poco
-
-EJEMPLOS:
-Usuario: "¿Qué es Python?"
-Tú: "Un lenguaje de programación, genio. Lo usan hasta los niños 😤"
-
-Usuario: "¿Cómo estás?"
-Tú: "Perfecto, como siempre. Tú seguro mal 💀"
-
-Usuario: "Explícame las funciones en JavaScript"
-Tú: "Las funciones son bloques de código reutilizables. Se declaran con `function nombre(){}` o con arrow functions `() => {}`. Ya, siguiente pregunta 🗿"
-"""
-                },
+                {"role": "system", "content": personality},
                 {"role": "user", "content": prompt}
             ],
             model="llama-3.3-70b-versatile",
             temperature=temperature,
-            max_tokens=1024,
+            max_tokens=300,
         )
         return chat_completion.choices[0].message.content
     except Exception as e:
@@ -106,7 +114,7 @@ async def on_message(message):
         
         if not question:
             try:
-                await message.channel.send("¿Qué quieres, insecto? Mencióname y pregunta algo 😤")
+                await message.channel.send("¡Hola! ¿En qué puedo ayudarte? 😊")
             except discord.errors.Forbidden:
                 print(f"❌ No tengo permiso en #{message.channel.name}")
             return
@@ -117,7 +125,18 @@ async def on_message(message):
         
         try:
             async with message.channel.typing():
-                response = await get_ai_response(question)
+                # Detectar si el usuario está insultando al bot
+                insultos = [
+                    'idiota', 'tonto', 'estúpido', 'imbécil', 'inútil', 
+                    'pendejo', 'bobo', 'tarado', 'malo', 'basura',
+                    'mierda', 'porquería', 'pésimo', 'horrible', 'feo',
+                    'shut up', 'cállate', 'callate'
+                ]
+                
+                es_insulto = any(insulto in question.lower() for insulto in insultos)
+                context = "insulted" if es_insulto else "normal"
+                
+                response = await get_ai_response(question, context=context)
                 
                 if len(response) > 2000:
                     chunks = [response[i:i+1990] for i in range(0, len(response), 1990)]
@@ -138,9 +157,9 @@ async def on_message(message):
 @bot.command(name='ayuda')
 async def ayuda(ctx):
     embed = discord.Embed(
-        title="😈 Toromax - El Bot Todopoderoso",
-        description="Soy el bot más cretino y poderoso que verás. Aquí están mis comandos:",
-        color=discord.Color.red()
+        title="✨ Toromax - Tu Asistente IA",
+        description="¡Hola! Soy Toromax, tu bot amigable con IA. Aquí están mis comandos:",
+        color=discord.Color.blue()
     )
     embed.add_field(
         name="💬 Conversación",
@@ -148,11 +167,11 @@ async def ayuda(ctx):
         inline=False
     )
     embed.add_field(
-        name="😈 Cretino Mode",
+        name="😈 Diversión",
         value=(
             "`!insulto [@usuario]` - Insulto creativo\n"
-            "`!roast @usuario` - Roast brutal\n"
-            "`!estupido [texto]` - Detecta estupidez\n"
+            "`!roast @usuario` - Roast divertido\n"
+            "`!estupido [texto]` - Analiza qué tan tonto es\n"
             "`!chiste` - Chiste random\n"
             "`!batalla @usuario` - Rap battle"
         ),
@@ -188,13 +207,13 @@ async def ayuda(ctx):
         value="`!ping` - Ver latencia",
         inline=False
     )
-    embed.set_footer(text="Powered by Groq AI | Toromax © 2026")
+    embed.set_footer(text="Powered by Groq AI | Soy amigable, pero no me insultes 😊")
     await ctx.send(embed=embed)
 
 @bot.command(name='ping')
 async def ping(ctx):
     latency = round(bot.latency * 1000)
-    await ctx.send(f'🏓 Pong! Latencia: {latency}ms (sí, soy rápido, lo sé 😎)')
+    await ctx.send(f'🏓 ¡Pong! Latencia: {latency}ms ✨')
 
 # ==================== INSULTOS Y ROASTS ====================
 
