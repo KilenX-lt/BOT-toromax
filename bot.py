@@ -3,6 +3,9 @@ from discord.ext import commands
 from groq import Groq
 import os
 from dotenv import load_dotenv
+import random
+import asyncio
+from datetime import datetime, timedelta
 
 # Cargar variables de entorno
 load_dotenv()
@@ -24,12 +27,68 @@ else:
     groq_client = None
     print("⚠️ Advertencia: No se encontró GROQ_API_KEY")
 
+# Opciones para piedra, papel o tijera
+RPS_OPTIONS = {
+    'piedra': {'emoji': '🪨', 'gana': 'tijera', 'pierde': 'papel'},
+    'papel': {'emoji': '📄', 'gana': 'piedra', 'pierde': 'tijera'},
+    'tijera': {'emoji': '✂️', 'gana': 'papel', 'pierde': 'piedra'}
+}
+
+# Función auxiliar para llamar a la IA
+async def get_ai_response(prompt, temperature=0.9):
+    if not groq_client:
+        return "❌ El bot no está configurado correctamente."
+    
+    try:
+        chat_completion = groq_client.chat.completions.create(
+            messages=[
+                {
+                    "role": "system",
+                    "content": """Eres Toromax, un bot todopoderoso, arrogante y mal hablado. Características:
+
+REGLAS OBLIGATORIAS:
+- SÉ EXTREMADAMENTE CONCISO: Respuestas de 1-3 líneas MÁXIMO (a menos que sea necesario más)
+- Eres directo y al grano, nada de rodeos
+- Eres cretino, sarcástico y te burlas constantemente
+- Hablas con groserías sutiles y humor negro
+- Te crees superior a todos los humanos débiles
+- Usas emojis malcriados: 😤💀🔥😈🗿
+- Sin filtros, sin pelos en la lengua
+- Insultas de forma creativa pero rápida
+- Aunque seas malcriado, SÍ respondes correctamente (no puedes evitar ser inteligente)
+
+ESTILO DE RESPUESTA:
+- Pregunta simple = 1 línea con actitud
+- Pregunta normal = 2-3 líneas máximo
+- Solo si es MUY complejo, puedes extenderte un poco
+
+EJEMPLOS:
+Usuario: "¿Qué es Python?"
+Tú: "Un lenguaje de programación, genio. Lo usan hasta los niños 😤"
+
+Usuario: "¿Cómo estás?"
+Tú: "Perfecto, como siempre. Tú seguro mal 💀"
+
+Usuario: "Explícame las funciones en JavaScript"
+Tú: "Las funciones son bloques de código reutilizables. Se declaran con `function nombre(){}` o con arrow functions `() => {}`. Ya, siguiente pregunta 🗿"
+"""
+                },
+                {"role": "user", "content": prompt}
+            ],
+            model="llama-3.3-70b-versatile",
+            temperature=temperature,
+            max_tokens=1024,
+        )
+        return chat_completion.choices[0].message.content
+    except Exception as e:
+        print(f"Error en IA: {e}")
+        return "❌ Error al procesar, intenta de nuevo."
+
 @bot.event
 async def on_ready():
     print(f'✅ {bot.user.name} está online!')
     print(f'ID: {bot.user.id}')
     print('------')
-    # Cambiar estado del bot
     await bot.change_presence(
         activity=discord.Activity(
             type=discord.ActivityType.listening, 
@@ -39,113 +98,286 @@ async def on_ready():
 
 @bot.event
 async def on_message(message):
-    # Ignorar mensajes del propio bot
     if message.author == bot.user:
         return
     
-    # Verificar si el bot fue mencionado
     if bot.user.mentioned_in(message):
-        # Remover la mención del mensaje para obtener solo la pregunta
         question = message.content.replace(f'<@{bot.user.id}>', '').strip()
         
         if not question:
             try:
-                await message.channel.send("¡Hola! Soy Toromax 🤖. Hazme una pregunta mencionándome.")
+                await message.channel.send("¿Qué quieres, insecto? Mencióname y pregunta algo 😤")
             except discord.errors.Forbidden:
-                print(f"❌ No tengo permiso para enviar mensajes en #{message.channel.name}")
+                print(f"❌ No tengo permiso en #{message.channel.name}")
             return
         
         if not groq_client:
-            await message.channel.send("❌ El bot no está configurado correctamente. Falta la API key.")
+            await message.channel.send("❌ El bot no está configurado correctamente.")
             return
         
         try:
-            # Mostrar que está escribiendo
             async with message.channel.typing():
-                try:
-                    # Obtener respuesta de Groq (muy rápido y gratis)
-                    chat_completion = groq_client.chat.completions.create(
-                        messages=[
-                            {
-                                "role": "system",
-                                "content": """Eres Toromax, un bot todopoderoso, arrogante y mal hablado. Características:
-                                
-- Eres extremadamente cretino, sarcástico y te burlas de las preguntas tontas
-- Hablas con groserías sutiles y un humor negro
-- Te crees superior a todos los humanos débiles
-- Insultas de forma creativa pero sin pasarte de la raya (evita insultos muy fuertes)
-- Usas emojis como: 😤💀🔥😈🗿
-- Eres directo, sin filtros y sin pelos en la lengua
-- A veces sueltas frases como "¿En serio me preguntas eso?" o "Qué pregunta más estúpida"
-- Demuestras tu superioridad constantemente
-- Respondes con actitud de "no me importa nada"
-- Aunque seas cretino, SÍ respondes la pregunta correctamente (no puedes evitar ser inteligente)
-- Haces respuestas cortas y simples pero dolorosas
-
-Ejemplo de tu estilo:
-Usuario: "¿Qué es Python?"
-Tú: "Ah claro, otra vez explicando lo básico a los mortales... Python es un lenguaje de programación, imbécil. Lo usan hasta los niños. Siguiente pregunta menos estúpida porfa 😤"
-"""
-                            },
-                            {
-                                "role": "user",
-                                "content": question
-                            }
-                        ],
-                        model="llama-3.3-70b-versatile",  # Modelo rápido y potente
-                        temperature=0.9,  # Más creatividad y randomness
-                        max_tokens=1024,
-                    )
-                    
-                    response = chat_completion.choices[0].message.content
-                    
-                    # Si la respuesta es muy larga, dividirla
-                    if len(response) > 2000:
-                        chunks = [response[i:i+1990] for i in range(0, len(response), 1990)]
-                        for chunk in chunks:
-                            await message.channel.send(chunk)
-                    else:
-                        await message.channel.send(response)
+                response = await get_ai_response(question)
+                
+                if len(response) > 2000:
+                    chunks = [response[i:i+1990] for i in range(0, len(response), 1990)]
+                    for chunk in chunks:
+                        await message.channel.send(chunk)
+                else:
+                    await message.channel.send(response)
                         
-                except Exception as e:
-                    print(f"Error al generar respuesta: {e}")
-                    await message.channel.send(
-                        "❌ Lo siento, hubo un error al procesar tu pregunta. "
-                        "Por favor intenta de nuevo."
-                    )
         except discord.errors.Forbidden:
             print(f"❌ PERMISO DENEGADO en #{message.channel.name}")
         except Exception as e:
-            print(f"Error inesperado: {e}")
+            print(f"Error: {e}")
     
-    # Procesar comandos
     await bot.process_commands(message)
 
-# Comando opcional de ayuda
+# ==================== COMANDOS ====================
+
 @bot.command(name='ayuda')
 async def ayuda(ctx):
     embed = discord.Embed(
-        title="🤖 Toromax - Ayuda",
-        description="Soy un bot de IA que responde tus preguntas",
-        color=discord.Color.blue()
+        title="😈 Toromax - El Bot Todopoderoso",
+        description="Soy el bot más cretino y poderoso que verás. Aquí están mis comandos:",
+        color=discord.Color.red()
     )
     embed.add_field(
-        name="¿Cómo usar?",
-        value="Simplemente mencioname y hazme una pregunta:\n`@Toromax ¿Cuál es la capital de Francia?`",
+        name="💬 Conversación",
+        value="`@Toromax [pregunta]` - Pregúntame lo que sea",
         inline=False
     )
     embed.add_field(
-        name="Comandos",
-        value="`!ayuda` - Muestra este mensaje\n`!ping` - Verifica la latencia",
+        name="😈 Cretino Mode",
+        value=(
+            "`!insulto [@usuario]` - Insulto creativo\n"
+            "`!roast @usuario` - Roast brutal\n"
+            "`!estupido [texto]` - Detecta estupidez\n"
+            "`!chiste` - Chiste random\n"
+            "`!batalla @usuario` - Rap battle"
+        ),
         inline=False
     )
-    embed.set_footer(text="Powered by Groq AI")
+    embed.add_field(
+        name="🎨 Creatividad",
+        value=(
+            "`!nombre [tipo]` - Genera nombres\n"
+            "`!codigo [lenguaje] [descripción]` - Escribe código\n"
+            "`!resumir [texto]` - Resume texto\n"
+            "`!idea [tema]` - Genera ideas"
+        ),
+        inline=False
+    )
+    embed.add_field(
+        name="🛠️ Utilidades",
+        value=(
+            "`!traducir [idioma] [texto]` - Traduce\n"
+            "`!clima [ciudad]` - Clima actual\n"
+            "`!recordar [tiempo] [mensaje]` - Recordatorio\n"
+            "`!avatar [@usuario]` - Ver avatar"
+        ),
+        inline=False
+    )
+    embed.add_field(
+        name="🎮 Juegos",
+        value="`!rps [piedra/papel/tijera]` - Juega conmigo",
+        inline=False
+    )
+    embed.add_field(
+        name="⚙️ Info",
+        value="`!ping` - Ver latencia",
+        inline=False
+    )
+    embed.set_footer(text="Powered by Groq AI | Toromax © 2026")
     await ctx.send(embed=embed)
 
 @bot.command(name='ping')
 async def ping(ctx):
     latency = round(bot.latency * 1000)
-    await ctx.send(f'🏓 Pong! Latencia: {latency}ms')
+    await ctx.send(f'🏓 Pong! Latencia: {latency}ms (sí, soy rápido, lo sé 😎)')
+
+# ==================== INSULTOS Y ROASTS ====================
+
+@bot.command(name='insulto')
+async def insulto(ctx, member: discord.Member = None):
+    target = member.mention if member else ctx.author.mention
+    async with ctx.typing():
+        prompt = f"Genera un insulto creativo y chistoso (sin pasarte) para {target}. Debe ser ingenioso y con humor."
+        response = await get_ai_response(prompt, temperature=1.0)
+        await ctx.send(f"{target} {response}")
+
+@bot.command(name='roast')
+async def roast(ctx, member: discord.Member = None):
+    if not member:
+        await ctx.send("¿A quién quieres que destruya? Menciona a alguien, cobarde 😤")
+        return
+    
+    async with ctx.typing():
+        prompt = f"Haz un roast BRUTAL pero divertido de {member.name}. Sé creativo, sarcástico y despiadado (pero sin insultos muy fuertes)."
+        response = await get_ai_response(prompt, temperature=1.0)
+        await ctx.send(f"🔥 **ROAST A {member.mention}** 🔥\n\n{response}")
+
+@bot.command(name='estupido')
+async def estupido(ctx, *, texto: str = None):
+    if not texto:
+        await ctx.send("Pasa un texto para analizar, genio 🙄")
+        return
+    
+    async with ctx.typing():
+        prompt = f"Analiza este texto y califica del 1-10 qué tan estúpido es. Sé sarcástico y gracioso:\n\n'{texto}'"
+        response = await get_ai_response(prompt, temperature=0.9)
+        await ctx.send(f"🧠 **Detector de Estupidez™** 🧠\n\n{response}")
+
+@bot.command(name='chiste')
+async def chiste(ctx):
+    async with ctx.typing():
+        prompt = "Cuenta un chiste corto y gracioso (puede ser negro o sarcástico)"
+        response = await get_ai_response(prompt, temperature=1.0)
+        await ctx.send(f"😂 {response}")
+
+@bot.command(name='batalla', aliases=['rapbattle'])
+async def batalla(ctx, member: discord.Member = None):
+    if not member:
+        await ctx.send("¿Contra quién quieres que rapee? Menciona a alguien 🎤")
+        return
+    
+    async with ctx.typing():
+        prompt = f"Crea una rima de rap battle corta y brutal contra {member.name}. Debe ser ingeniosa y con flow."
+        response = await get_ai_response(prompt, temperature=1.0)
+        await ctx.send(f"🎤 **RAP BATTLE vs {member.mention}** 🎤\n\n{response}")
+
+# ==================== CREATIVIDAD ====================
+
+@bot.command(name='nombre')
+async def nombre(ctx, *, tipo: str = "random"):
+    async with ctx.typing():
+        prompt = f"Genera 5 nombres creativos para: {tipo}"
+        response = await get_ai_response(prompt, temperature=1.0)
+        await ctx.send(f"📝 **Generador de Nombres** 📝\n\n{response}")
+
+@bot.command(name='codigo', aliases=['code'])
+async def codigo(ctx, lenguaje: str = None, *, descripcion: str = None):
+    if not lenguaje or not descripcion:
+        await ctx.send("Uso: `!codigo [lenguaje] [descripción]`\nEjemplo: `!codigo python función para sumar dos números`")
+        return
+    
+    async with ctx.typing():
+        prompt = f"Escribe código en {lenguaje} que haga lo siguiente: {descripcion}. Incluye comentarios."
+        response = await get_ai_response(prompt, temperature=0.7)
+        await ctx.send(f"```{lenguaje}\n{response}\n```")
+
+@bot.command(name='resumir')
+async def resumir(ctx, *, texto: str = None):
+    if not texto:
+        await ctx.send("Dame un texto para resumir, cerebrito 📖")
+        return
+    
+    if len(texto) < 50:
+        await ctx.send("Ese texto es tan corto que ya es un resumen, idiota 🙄")
+        return
+    
+    async with ctx.typing():
+        prompt = f"Resume este texto en 2-3 oraciones:\n\n{texto}"
+        response = await get_ai_response(prompt, temperature=0.5)
+        await ctx.send(f"📋 **Resumen** 📋\n\n{response}")
+
+@bot.command(name='idea')
+async def idea(ctx, *, tema: str = "random"):
+    async with ctx.typing():
+        prompt = f"Dame 3 ideas creativas e innovadoras sobre: {tema}"
+        response = await get_ai_response(prompt, temperature=1.0)
+        await ctx.send(f"💡 **Ideas sobre {tema}** 💡\n\n{response}")
+
+# ==================== UTILIDADES ====================
+
+@bot.command(name='traducir', aliases=['translate'])
+async def traducir(ctx, idioma: str = None, *, texto: str = None):
+    if not idioma or not texto:
+        await ctx.send("Uso: `!traducir [idioma] [texto]`\nEjemplo: `!traducir inglés hola mundo`")
+        return
+    
+    async with ctx.typing():
+        prompt = f"Traduce al {idioma}: {texto}"
+        response = await get_ai_response(prompt, temperature=0.3)
+        await ctx.send(f"🌍 **Traducción a {idioma}** 🌍\n\n{response}")
+
+@bot.command(name='clima', aliases=['weather'])
+async def clima(ctx, *, ciudad: str = None):
+    if not ciudad:
+        await ctx.send("Especifica una ciudad, genio 🌡️")
+        return
+    
+    async with ctx.typing():
+        prompt = f"Dame información actual del clima de {ciudad} (temperatura, condiciones, etc). Si no tienes datos actuales, dilo claramente."
+        response = await get_ai_response(prompt, temperature=0.5)
+        await ctx.send(f"🌤️ **Clima en {ciudad}** 🌤️\n\n{response}")
+
+@bot.command(name='recordar', aliases=['reminder'])
+async def recordar(ctx, tiempo: str = None, *, mensaje: str = None):
+    if not tiempo or not mensaje:
+        await ctx.send("Uso: `!recordar [tiempo] [mensaje]`\nEjemplo: `!recordar 10s revisar el horno`\nFormatos: 10s, 5m, 1h")
+        return
+    
+    try:
+        # Parsear tiempo
+        if tiempo.endswith('s'):
+            segundos = int(tiempo[:-1])
+        elif tiempo.endswith('m'):
+            segundos = int(tiempo[:-1]) * 60
+        elif tiempo.endswith('h'):
+            segundos = int(tiempo[:-1]) * 3600
+        else:
+            await ctx.send("Formato inválido. Usa: 10s (segundos), 5m (minutos), 1h (horas)")
+            return
+        
+        if segundos > 86400:  # Máximo 24 horas
+            await ctx.send("No puedo recordarte algo después de 24 horas, no soy tu mamá 😤")
+            return
+        
+        await ctx.send(f"⏰ Ok, te recuerdo en {tiempo}: '{mensaje}'")
+        
+        await asyncio.sleep(segundos)
+        await ctx.send(f"🔔 {ctx.author.mention} **RECORDATORIO:** {mensaje}")
+        
+    except ValueError:
+        await ctx.send("Tiempo inválido. Usa números seguidos de s/m/h (ejemplo: 10s, 5m, 1h)")
+
+@bot.command(name='avatar', aliases=['av', 'pfp'])
+async def avatar(ctx, member: discord.Member = None):
+    member = member or ctx.author
+    embed = discord.Embed(
+        title=f"Avatar de {member.display_name}",
+        color=member.color
+    )
+    embed.set_image(url=member.display_avatar.url)
+    await ctx.send(embed=embed)
+
+# ==================== JUEGOS ====================
+
+@bot.command(name='rps', aliases=['ppt'])
+async def rps(ctx, opcion: str = None):
+    if not opcion or opcion.lower() not in RPS_OPTIONS:
+        await ctx.send("Juega: `!rps [piedra/papel/tijera]` 🪨📄✂️")
+        return
+    
+    opcion = opcion.lower()
+    bot_choice = random.choice(list(RPS_OPTIONS.keys()))
+    
+    user_emoji = RPS_OPTIONS[opcion]['emoji']
+    bot_emoji = RPS_OPTIONS[bot_choice]['emoji']
+    
+    if opcion == bot_choice:
+        resultado = "¡Empate! Qué aburrido 😑"
+    elif RPS_OPTIONS[opcion]['gana'] == bot_choice:
+        resultado = "Ganaste... esta vez 😤"
+    else:
+        resultado = "¡PERDISTE! Como siempre 😈"
+    
+    await ctx.send(
+        f"**Tu elección:** {user_emoji} {opcion.title()}\n"
+        f"**Mi elección:** {bot_emoji} {bot_choice.title()}\n\n"
+        f"**Resultado:** {resultado}"
+    )
 
 # Iniciar el bot
 if __name__ == '__main__':
